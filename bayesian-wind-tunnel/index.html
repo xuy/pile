@@ -1,0 +1,688 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bayesian Wind Tunnel - Bijection Elimination Demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.11.0/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .attention-cell {
+            display: inline-block;
+            width: 30px;
+            height: 30px;
+            margin: 1px;
+            text-align: center;
+            line-height: 30px;
+            font-size: 10px;
+            border: 1px solid #ccc;
+        }
+        .key-lock-btn {
+            transition: all 0.2s;
+        }
+        .key-lock-btn:hover {
+            transform: scale(1.05);
+        }
+    </style>
+</head>
+<body class="bg-gray-100 p-4">
+    <div class="max-w-7xl mx-auto">
+        <h1 class="text-4xl font-bold text-center mb-2 text-blue-900">Bayesian Wind Tunnel</h1>
+        <p class="text-center text-gray-600 mb-6">Bijection Elimination with Transformer-based Bayesian Inference</p>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <!-- Training Panel -->
+            <div class="bg-white rounded-lg shadow-lg p-6">
+                <h2 class="text-2xl font-bold mb-4 text-gray-800">Training Control</h2>
+                <div class="mb-4">
+                    <button id="trainBtn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-lg w-full">
+                        Start Training
+                    </button>
+                    <button id="stopBtn" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-6 rounded-lg w-full mt-2" disabled>
+                        Stop Training
+                    </button>
+                </div>
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                        Epochs: <span id="epochDisplay">0</span> | Loss: <span id="lossDisplay">--</span>
+                    </label>
+                    <div class="w-full bg-gray-200 rounded-full h-4">
+                        <div id="progressBar" class="bg-blue-600 h-4 rounded-full" style="width: 0%"></div>
+                    </div>
+                </div>
+                <div class="mb-4">
+                    <canvas id="lossChart" class="w-full" height="200"></canvas>
+                </div>
+            </div>
+
+            <!-- Interactive Inference Panel -->
+            <div class="bg-white rounded-lg shadow-lg p-6">
+                <h2 class="text-2xl font-bold mb-4 text-gray-800">Interactive Inference</h2>
+                <div class="mb-4">
+                    <p class="text-sm text-gray-600 mb-2">Build a sequence by selecting Key-Lock pairs, then query a key:</p>
+                    <div id="sequenceDisplay" class="bg-gray-50 p-4 rounded border border-gray-300 min-h-[60px] mb-4">
+                        <span class="text-gray-400">Sequence will appear here...</span>
+                    </div>
+                    <button id="resetSeqBtn" class="bg-gray-500 hover:bg-gray-600 text-white font-bold py-1 px-4 rounded">
+                        Reset Sequence
+                    </button>
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <h3 class="font-semibold mb-2 text-gray-700">Select Key</h3>
+                        <div id="keyButtons" class="grid grid-cols-4 gap-2"></div>
+                    </div>
+                    <div>
+                        <h3 class="font-semibold mb-2 text-gray-700">Select Lock</h3>
+                        <div id="lockButtons" class="grid grid-cols-4 gap-2"></div>
+                    </div>
+                </div>
+                <div class="mt-4">
+                    <h3 class="font-semibold mb-2 text-gray-700">Query Key</h3>
+                    <div id="queryButtons" class="grid grid-cols-4 gap-2"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Visualization Panels -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-6">
+            <!-- Probability Distribution -->
+            <div class="bg-white rounded-lg shadow-lg p-6">
+                <h2 class="text-xl font-bold mb-4 text-gray-800">Probability Distribution</h2>
+                <canvas id="probChart" height="300"></canvas>
+            </div>
+
+            <!-- Attention Map -->
+            <div class="bg-white rounded-lg shadow-lg p-6">
+                <h2 class="text-xl font-bold mb-4 text-gray-800">Attention Map</h2>
+                <div id="attentionMap" class="overflow-auto"></div>
+            </div>
+
+            <!-- Entropy Monitor -->
+            <div class="bg-white rounded-lg shadow-lg p-6">
+                <h2 class="text-xl font-bold mb-4 text-gray-800">Entropy Monitor</h2>
+                <canvas id="entropyChart" height="300"></canvas>
+            </div>
+        </div>
+
+        <div class="mt-6 bg-blue-50 border-l-4 border-blue-500 p-4 rounded">
+            <p class="text-sm text-gray-700">
+                <strong>Reference:</strong> The Bayesian Geometry of Transformer Attention (arXiv:2512.22471v1)<br>
+                This demo trains a miniature Transformer to perform Bayesian inference on bijection elimination tasks.
+                The model learns to predict which locks are available given a partial key-lock assignment.
+            </p>
+        </div>
+    </div>
+
+    <script>
+        // ============================================================================
+        // GLOBAL CONFIGURATION
+        // ============================================================================
+        const CONFIG = {
+            VOCAB_SIZE: 8,
+            NUM_KEYS: 8,
+            NUM_LOCKS: 8,
+            EMBED_DIM: 64,
+            NUM_HEADS: 4,
+            NUM_LAYERS: 2,
+            MAX_SEQ_LEN: 20,
+            BATCH_SIZE: 32,
+            EPOCHS: 100,
+            LEARNING_RATE: 0.001
+        };
+
+        // Token IDs: 0=PAD, 1-8=K1-K8, 9-16=L1-L8, 17=QUERY
+        const PAD_TOKEN = 0;
+        const KEY_OFFSET = 1;
+        const LOCK_OFFSET = 9;
+        const QUERY_TOKEN = 17;
+        const VOCAB_SIZE_TOTAL = 18;
+
+        // ============================================================================
+        // STATE MANAGEMENT
+        // ============================================================================
+        let model = null;
+        let isTraining = false;
+        let trainingData = null;
+        let lossHistory = [];
+        let entropyHistory = [];
+        let currentSequence = [];
+        let selectedKey = null;
+        let selectedLock = null;
+
+        // Charts
+        let lossChart = null;
+        let probChart = null;
+        let entropyChart = null;
+
+        // ============================================================================
+        // DATA GENERATION
+        // ============================================================================
+
+        function generateBijection() {
+            // Generate a random permutation of locks for keys
+            const locks = Array.from({length: CONFIG.NUM_LOCKS}, (_, i) => i);
+            for (let i = locks.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [locks[i], locks[j]] = [locks[j], locks[i]];
+            }
+            return locks;
+        }
+
+        function generateBatch(batchSize) {
+            const sequences = [];
+            const labels = [];
+
+            for (let b = 0; b < batchSize; b++) {
+                const bijection = generateBijection();
+                const numPairs = Math.floor(Math.random() * CONFIG.NUM_KEYS) + 1;
+                const queryKey = Math.floor(Math.random() * CONFIG.NUM_KEYS);
+
+                // Build sequence of revealed pairs
+                const revealedKeys = Array.from({length: CONFIG.NUM_KEYS}, (_, i) => i)
+                    .filter(k => k !== queryKey)
+                    .sort(() => Math.random() - 0.5)
+                    .slice(0, numPairs - 1);
+
+                const sequence = [];
+                const usedLocks = new Set();
+
+                for (const key of revealedKeys) {
+                    sequence.push(KEY_OFFSET + key);
+                    sequence.push(LOCK_OFFSET + bijection[key]);
+                    usedLocks.add(bijection[key]);
+                }
+
+                // Add query key
+                sequence.push(KEY_OFFSET + queryKey);
+                sequence.push(QUERY_TOKEN);
+
+                // Pad sequence
+                while (sequence.length < CONFIG.MAX_SEQ_LEN) {
+                    sequence.push(PAD_TOKEN);
+                }
+
+                // Calculate Bayesian posterior (ground truth)
+                const availableLocks = Array.from({length: CONFIG.NUM_LOCKS}, (_, i) => i)
+                    .filter(l => !usedLocks.has(l));
+                const posterior = new Array(CONFIG.NUM_LOCKS).fill(0);
+                const prob = 1.0 / availableLocks.length;
+                for (const lock of availableLocks) {
+                    posterior[lock] = prob;
+                }
+
+                sequences.push(sequence);
+                labels.push(posterior);
+            }
+
+            return {
+                sequences: tf.tensor2d(sequences, [batchSize, CONFIG.MAX_SEQ_LEN]),
+                labels: tf.tensor2d(labels, [batchSize, CONFIG.NUM_LOCKS])
+            };
+        }
+
+        function bayesianOracle(sequence) {
+            // Calculate exact posterior given a sequence
+            const usedLocks = new Set();
+
+            for (let i = 0; i < sequence.length; i += 2) {
+                if (sequence[i] >= KEY_OFFSET && sequence[i] < LOCK_OFFSET) {
+                    if (i + 1 < sequence.length &&
+                        sequence[i + 1] >= LOCK_OFFSET &&
+                        sequence[i + 1] < QUERY_TOKEN) {
+                        usedLocks.add(sequence[i + 1] - LOCK_OFFSET);
+                    }
+                }
+            }
+
+            const availableLocks = Array.from({length: CONFIG.NUM_LOCKS}, (_, i) => i)
+                .filter(l => !usedLocks.has(l));
+            const posterior = new Array(CONFIG.NUM_LOCKS).fill(0);
+            const prob = availableLocks.length > 0 ? 1.0 / availableLocks.length : 0;
+            for (const lock of availableLocks) {
+                posterior[lock] = prob;
+            }
+
+            return posterior;
+        }
+
+        // ============================================================================
+        // MODEL ARCHITECTURE
+        // ============================================================================
+
+        function multiHeadAttention(queries, keys, values, numHeads, mask = null) {
+            return tf.tidy(() => {
+                const batchSize = queries.shape[0];
+                const seqLen = queries.shape[1];
+                const depth = queries.shape[2];
+                const headDim = depth / numHeads;
+
+                // Reshape for multi-head: [batch, seq, heads, headDim]
+                const qReshaped = tf.reshape(queries, [batchSize, seqLen, numHeads, headDim]);
+                const kReshaped = tf.reshape(keys, [batchSize, seqLen, numHeads, headDim]);
+                const vReshaped = tf.reshape(values, [batchSize, seqLen, numHeads, headDim]);
+
+                // Transpose to [batch, heads, seq, headDim]
+                const qTransposed = tf.transpose(qReshaped, [0, 2, 1, 3]);
+                const kTransposed = tf.transpose(kReshaped, [0, 2, 1, 3]);
+                const vTransposed = tf.transpose(vReshaped, [0, 2, 1, 3]);
+
+                // Scaled dot-product attention
+                const scale = Math.sqrt(headDim);
+                const scores = tf.matMul(qTransposed, kTransposed, false, true).div(scale);
+
+                // Apply mask if provided
+                let maskedScores = scores;
+                if (mask !== null) {
+                    const maskExpanded = tf.expandDims(tf.expandDims(mask, 1), 1);
+                    maskedScores = tf.add(scores, tf.mul(maskExpanded, -1e9));
+                }
+
+                const attention = tf.softmax(maskedScores, -1);
+                const output = tf.matMul(attention, vTransposed);
+
+                // Transpose back and reshape
+                const outputTransposed = tf.transpose(output, [0, 2, 1, 3]);
+                const outputReshaped = tf.reshape(outputTransposed, [batchSize, seqLen, depth]);
+
+                return outputReshaped;
+            });
+        }
+
+        function createTransformerModel() {
+            const input = tf.input({shape: [CONFIG.MAX_SEQ_LEN]});
+
+            // Embedding layer
+            const embeddingWeights = tf.variable(
+                tf.randomNormal([VOCAB_SIZE_TOTAL, CONFIG.EMBED_DIM], 0, 0.1)
+            );
+
+            let x = tf.gather(embeddingWeights, input);
+
+            // Positional encoding
+            const posEncoding = tf.variable(
+                tf.randomNormal([CONFIG.MAX_SEQ_LEN, CONFIG.EMBED_DIM], 0, 0.1)
+            );
+            x = tf.add(x, posEncoding);
+
+            // Transformer layers
+            for (let layer = 0; layer < CONFIG.NUM_LAYERS; layer++) {
+                // Multi-head self-attention
+                const qWeight = tf.variable(tf.randomNormal([CONFIG.EMBED_DIM, CONFIG.EMBED_DIM], 0, 0.1));
+                const kWeight = tf.variable(tf.randomNormal([CONFIG.EMBED_DIM, CONFIG.EMBED_DIM], 0, 0.1));
+                const vWeight = tf.variable(tf.randomNormal([CONFIG.EMBED_DIM, CONFIG.EMBED_DIM], 0, 0.1));
+
+                const queries = tf.dot(x, qWeight);
+                const keys = tf.dot(x, kWeight);
+                const values = tf.dot(x, vWeight);
+
+                const attnOutput = multiHeadAttention(queries, keys, values, CONFIG.NUM_HEADS);
+
+                // Add & Norm
+                x = tf.add(x, attnOutput);
+                x = tf.layers.layerNormalization().apply(x);
+
+                // Feed-forward
+                const ff1 = tf.layers.dense({units: CONFIG.EMBED_DIM * 4, activation: 'relu'}).apply(x);
+                const ff2 = tf.layers.dense({units: CONFIG.EMBED_DIM}).apply(ff1);
+
+                // Add & Norm
+                x = tf.add(x, ff2);
+                x = tf.layers.layerNormalization().apply(x);
+            }
+
+            // Extract last token representation (query position)
+            x = tf.slice(x, [0, CONFIG.MAX_SEQ_LEN - 1, 0], [-1, 1, -1]);
+            x = tf.reshape(x, [-1, CONFIG.EMBED_DIM]);
+
+            // Output layer
+            const output = tf.layers.dense({
+                units: CONFIG.NUM_LOCKS,
+                activation: 'softmax',
+                name: 'output'
+            }).apply(x);
+
+            const model = tf.model({inputs: input, outputs: output});
+            return model;
+        }
+
+        // ============================================================================
+        // TRAINING
+        // ============================================================================
+
+        async function trainModel() {
+            if (!model) {
+                model = createTransformerModel();
+                model.compile({
+                    optimizer: tf.train.adam(CONFIG.LEARNING_RATE),
+                    loss: tf.losses.kullbackLeibler,
+                    metrics: ['accuracy']
+                });
+            }
+
+            isTraining = true;
+            document.getElementById('trainBtn').disabled = true;
+            document.getElementById('stopBtn').disabled = false;
+
+            lossHistory = [];
+
+            for (let epoch = 0; epoch < CONFIG.EPOCHS && isTraining; epoch++) {
+                const batch = generateBatch(CONFIG.BATCH_SIZE);
+
+                const history = await model.fit(batch.sequences, batch.labels, {
+                    epochs: 1,
+                    verbose: 0
+                });
+
+                const loss = history.history.loss[0];
+                lossHistory.push(loss);
+
+                // Update UI
+                document.getElementById('epochDisplay').textContent = epoch + 1;
+                document.getElementById('lossDisplay').textContent = loss.toFixed(4);
+                document.getElementById('progressBar').style.width =
+                    ((epoch + 1) / CONFIG.EPOCHS * 100) + '%';
+
+                updateLossChart();
+
+                // Cleanup
+                batch.sequences.dispose();
+                batch.labels.dispose();
+
+                // Allow UI updates
+                await tf.nextFrame();
+            }
+
+            isTraining = false;
+            document.getElementById('trainBtn').disabled = false;
+            document.getElementById('stopBtn').disabled = true;
+        }
+
+        function stopTraining() {
+            isTraining = false;
+        }
+
+        // ============================================================================
+        // INFERENCE
+        // ============================================================================
+
+        async function runInference(sequence) {
+            if (!model) return null;
+
+            const paddedSeq = [...sequence];
+            while (paddedSeq.length < CONFIG.MAX_SEQ_LEN) {
+                paddedSeq.push(PAD_TOKEN);
+            }
+
+            const input = tf.tensor2d([paddedSeq], [1, CONFIG.MAX_SEQ_LEN]);
+            const prediction = model.predict(input);
+            const probArray = await prediction.data();
+
+            input.dispose();
+            prediction.dispose();
+
+            return Array.from(probArray);
+        }
+
+        // ============================================================================
+        // UI INTERACTIONS
+        // ============================================================================
+
+        function initializeUI() {
+            // Key buttons
+            const keyButtons = document.getElementById('keyButtons');
+            for (let i = 0; i < CONFIG.NUM_KEYS; i++) {
+                const btn = document.createElement('button');
+                btn.textContent = `K${i + 1}`;
+                btn.className = 'key-lock-btn bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded';
+                btn.onclick = () => selectKey(i);
+                keyButtons.appendChild(btn);
+            }
+
+            // Lock buttons
+            const lockButtons = document.getElementById('lockButtons');
+            for (let i = 0; i < CONFIG.NUM_LOCKS; i++) {
+                const btn = document.createElement('button');
+                btn.textContent = `L${i + 1}`;
+                btn.className = 'key-lock-btn bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded';
+                btn.onclick = () => selectLock(i);
+                lockButtons.appendChild(btn);
+            }
+
+            // Query buttons
+            const queryButtons = document.getElementById('queryButtons');
+            for (let i = 0; i < CONFIG.NUM_KEYS; i++) {
+                const btn = document.createElement('button');
+                btn.textContent = `Q${i + 1}`;
+                btn.className = 'key-lock-btn bg-purple-500 hover:bg-purple-600 text-white font-bold py-2 px-4 rounded';
+                btn.onclick = () => queryKey(i);
+                queryButtons.appendChild(btn);
+            }
+
+            // Initialize charts
+            initializeCharts();
+        }
+
+        function selectKey(keyIdx) {
+            selectedKey = keyIdx;
+            updateKeyLockButtons();
+        }
+
+        function selectLock(lockIdx) {
+            if (selectedKey !== null) {
+                currentSequence.push(KEY_OFFSET + selectedKey);
+                currentSequence.push(LOCK_OFFSET + lockIdx);
+                selectedKey = null;
+                selectedLock = null;
+                updateSequenceDisplay();
+                updateKeyLockButtons();
+            }
+        }
+
+        async function queryKey(keyIdx) {
+            const sequence = [...currentSequence, KEY_OFFSET + keyIdx, QUERY_TOKEN];
+
+            // Get model prediction
+            const modelProbs = await runInference(sequence);
+
+            // Get Bayesian oracle
+            const oracleProbs = bayesianOracle(sequence);
+
+            // Update probability chart
+            updateProbabilityChart(modelProbs, oracleProbs);
+
+            // Calculate and update entropy
+            if (modelProbs) {
+                const entropy = calculateEntropy(modelProbs);
+                entropyHistory.push(entropy);
+                updateEntropyChart();
+            }
+        }
+
+        function updateSequenceDisplay() {
+            const display = document.getElementById('sequenceDisplay');
+            if (currentSequence.length === 0) {
+                display.innerHTML = '<span class="text-gray-400">Sequence will appear here...</span>';
+                return;
+            }
+
+            let html = '';
+            for (let i = 0; i < currentSequence.length; i += 2) {
+                const keyToken = currentSequence[i];
+                const lockToken = currentSequence[i + 1];
+                if (keyToken >= KEY_OFFSET && keyToken < LOCK_OFFSET) {
+                    const keyNum = keyToken - KEY_OFFSET + 1;
+                    const lockNum = lockToken - LOCK_OFFSET + 1;
+                    html += `<span class="inline-block bg-blue-100 text-blue-800 px-2 py-1 rounded mr-2 mb-2">
+                        K${keyNum} → L${lockNum}
+                    </span>`;
+                }
+            }
+            display.innerHTML = html;
+        }
+
+        function updateKeyLockButtons() {
+            const keyBtns = document.querySelectorAll('#keyButtons button');
+            keyBtns.forEach((btn, i) => {
+                if (i === selectedKey) {
+                    btn.className = 'key-lock-btn bg-blue-700 text-white font-bold py-2 px-4 rounded';
+                } else {
+                    btn.className = 'key-lock-btn bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded';
+                }
+            });
+        }
+
+        function resetSequence() {
+            currentSequence = [];
+            selectedKey = null;
+            selectedLock = null;
+            entropyHistory = [];
+            updateSequenceDisplay();
+            updateKeyLockButtons();
+            updateProbabilityChart(null, null);
+            updateEntropyChart();
+        }
+
+        function calculateEntropy(probs) {
+            let entropy = 0;
+            for (const p of probs) {
+                if (p > 0) {
+                    entropy -= p * Math.log2(p);
+                }
+            }
+            return entropy;
+        }
+
+        // ============================================================================
+        // CHARTS
+        // ============================================================================
+
+        function initializeCharts() {
+            // Loss chart
+            const lossCtx = document.getElementById('lossChart').getContext('2d');
+            lossChart = new Chart(lossCtx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'Training Loss',
+                        data: [],
+                        borderColor: 'rgb(59, 130, 246)',
+                        backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                        tension: 0.1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+
+            // Probability chart
+            const probCtx = document.getElementById('probChart').getContext('2d');
+            probChart = new Chart(probCtx, {
+                type: 'bar',
+                data: {
+                    labels: ['L1', 'L2', 'L3', 'L4', 'L5', 'L6', 'L7', 'L8'],
+                    datasets: [{
+                        label: 'Model',
+                        data: new Array(8).fill(0),
+                        backgroundColor: 'rgba(59, 130, 246, 0.7)'
+                    }, {
+                        label: 'Bayesian Oracle',
+                        data: new Array(8).fill(0),
+                        backgroundColor: 'rgba(34, 197, 94, 0.7)'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            max: 1
+                        }
+                    }
+                }
+            });
+
+            // Entropy chart
+            const entropyCtx = document.getElementById('entropyChart').getContext('2d');
+            entropyChart = new Chart(entropyCtx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'Entropy (bits)',
+                        data: [],
+                        borderColor: 'rgb(168, 85, 247)',
+                        backgroundColor: 'rgba(168, 85, 247, 0.1)',
+                        tension: 0.1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            max: 3
+                        }
+                    }
+                }
+            });
+        }
+
+        function updateLossChart() {
+            const maxPoints = 100;
+            const data = lossHistory.slice(-maxPoints);
+            lossChart.data.labels = data.map((_, i) => i + 1);
+            lossChart.data.datasets[0].data = data;
+            lossChart.update('none');
+        }
+
+        function updateProbabilityChart(modelProbs, oracleProbs) {
+            if (modelProbs) {
+                probChart.data.datasets[0].data = modelProbs;
+            } else {
+                probChart.data.datasets[0].data = new Array(8).fill(0);
+            }
+
+            if (oracleProbs) {
+                probChart.data.datasets[1].data = oracleProbs;
+            } else {
+                probChart.data.datasets[1].data = new Array(8).fill(0);
+            }
+
+            probChart.update('none');
+        }
+
+        function updateEntropyChart() {
+            entropyChart.data.labels = entropyHistory.map((_, i) => i + 1);
+            entropyChart.data.datasets[0].data = entropyHistory;
+            entropyChart.update('none');
+        }
+
+        // ============================================================================
+        // INITIALIZATION
+        // ============================================================================
+
+        document.addEventListener('DOMContentLoaded', () => {
+            console.log('Bayesian Wind Tunnel initialized');
+            console.log('TensorFlow.js version:', tf.version.tfjs);
+
+            initializeUI();
+
+            document.getElementById('trainBtn').addEventListener('click', trainModel);
+            document.getElementById('stopBtn').addEventListener('click', stopTraining);
+            document.getElementById('resetSeqBtn').addEventListener('click', resetSequence);
+        });
+    </script>
+</body>
+</html>
