@@ -1,0 +1,14 @@
+# Node modules
+node_modules/
+
+# Editor files
+.DS_Store
+.vscode/
+.idea/
+
+# Logs
+*.log
+
+# Note: dist/ is intentionally NOT ignored
+# This is a pedagogical demo that should work out-of-the-box
+# Users can open index.html without running a build step

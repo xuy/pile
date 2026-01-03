@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LMSR Interactive Demo - Prediction Markets for ML Practitioners</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>LMSR Interactive Demo</h1>
+            <p class="subtitle">Logarithmic Market Scoring Rule - Prediction Markets for ML Practitioners</p>
+        </header>
+
+        <div class="key-insight">
+            <h3>Key Insight: LMSR Pricing is Literally Softmax!</h3>
+            <div class="formula">
+                <code>p<sub>i</sub> = exp(q<sub>i</sub>/b) / Σ<sub>j</sub> exp(q<sub>j</sub>/b)</code>
+            </div>
+            <p>The <strong>b</strong> parameter acts like temperature in softmax</p>
+        </div>
+
+        <div class="main-content">
+            <div class="left-panel">
+                <!-- Scenario Selection -->
+                <section class="card">
+                    <h2>Choose a Scenario</h2>
+                    <select id="scenario-select" class="scenario-select">
+                        <option value="">Select a learning scenario...</option>
+                    </select>
+                    <div id="scenario-info" class="scenario-info"></div>
+                </section>
+
+                <!-- Market Interface -->
+                <section class="card">
+                    <h2 id="market-question">Market Question</h2>
+                    <div id="market-outcomes" class="market-outcomes"></div>
+                </section>
+
+                <!-- Trading Controls -->
+                <section class="card">
+                    <h2>Make a Trade</h2>
+                    <div class="trade-controls">
+                        <div class="form-group">
+                            <label for="outcome-select">Outcome:</label>
+                            <select id="outcome-select"></select>
+                        </div>
+                        <div class="form-group">
+                            <label for="shares-input">Shares:</label>
+                            <input type="number" id="shares-input" value="10" step="1">
+                            <span class="hint">Positive = Buy, Negative = Sell</span>
+                        </div>
+                        <div class="trade-preview">
+                            <div class="preview-line">
+                                <span>Estimated Cost:</span>
+                                <span id="estimated-cost" class="value">$0.00</span>
+                            </div>
+                            <div class="preview-line">
+                                <span>Average Price:</span>
+                                <span id="average-price" class="value">$0.00</span>
+                            </div>
+                            <div class="preview-line">
+                                <span>Price After:</span>
+                                <span id="price-after" class="value">0.00%</span>
+                            </div>
+                        </div>
+                        <button id="execute-trade" class="btn-primary">Execute Trade</button>
+                    </div>
+                </section>
+
+                <!-- Liquidity Control -->
+                <section class="card">
+                    <h2>Liquidity Parameter (b)</h2>
+                    <div class="liquidity-control">
+                        <input type="range" id="liquidity-slider" min="1" max="100" value="10" step="1">
+                        <div class="liquidity-value">
+                            <span>b = <strong id="liquidity-value">10</strong></span>
+                            <span class="hint" id="liquidity-hint">Moderate liquidity</span>
+                        </div>
+                        <div class="liquidity-explanation">
+                            <p><strong>Higher b</strong> = More liquidity = Smoother prices = Less sensitive to trades</p>
+                            <p><strong>Lower b</strong> = Less liquidity = Sharper prices = More sensitive to trades</p>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Portfolio -->
+                <section class="card">
+                    <h2>Your Portfolio</h2>
+                    <div class="portfolio">
+                        <div class="portfolio-line">
+                            <span>Cash:</span>
+                            <span id="cash-value" class="value">$100.00</span>
+                        </div>
+                        <div id="holdings-list" class="holdings-list"></div>
+                        <div class="portfolio-line total">
+                            <span>Mark-to-Market Value:</span>
+                            <span id="portfolio-value" class="value">$100.00</span>
+                        </div>
+                        <div class="portfolio-line pnl">
+                            <span>P&L:</span>
+                            <span id="pnl-value" class="value">$0.00</span>
+                        </div>
+                    </div>
+                    <button id="reset-market" class="btn-secondary">Reset Market</button>
+                </section>
+            </div>
+
+            <div class="right-panel">
+                <!-- Visualizations -->
+                <section class="card">
+                    <h2>Price History</h2>
+                    <canvas id="price-chart"></canvas>
+                </section>
+
+                <section class="card">
+                    <h2>Current Probability Distribution</h2>
+                    <canvas id="probability-chart"></canvas>
+                </section>
+
+                <!-- Educational Content -->
+                <section class="card educational">
+                    <h2>Learning Guide</h2>
+                    <div id="guidance-content" class="guidance-content">
+                        <p>Select a scenario to get started with guided learning!</p>
+                    </div>
+                </section>
+
+                <!-- Trade History -->
+                <section class="card">
+                    <h2>Trade History</h2>
+                    <div id="trade-history" class="trade-history">
+                        <p class="empty-state">No trades yet</p>
+                    </div>
+                </section>
+
+                <!-- Market Maker Info -->
+                <section class="card">
+                    <h2>Market Maker Info</h2>
+                    <div class="mm-info">
+                        <div class="info-line">
+                            <span>Maximum Loss:</span>
+                            <span id="max-loss" class="value">$0.00</span>
+                        </div>
+                        <div class="info-line">
+                            <span>Formula:</span>
+                            <span class="formula-small">b × ln(n)</span>
+                        </div>
+                        <p class="explanation">
+                            The market maker's loss is bounded no matter what trades occur.
+                            This makes LMSR safe for providing continuous liquidity.
+                        </p>
+                    </div>
+                </section>
+            </div>
+        </div>
+    </div>
+
+    <footer>
+        <p>
+            Built to teach LMSR fundamentals •
+            <a href="https://mason.gmu.edu/~rhanson/mktscore.pdf" target="_blank">Hanson's Original Paper</a> •
+            <a href="docs/theory.md">Mathematical Background</a> •
+            <a href="https://github.com/xuy/pile" target="_blank">Source Code</a>
+        </p>
+    </footer>
+
+    <script type="module" src="dist/app.js"></script>
+</body>
+</html>
