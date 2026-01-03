@@ -14,11 +14,22 @@ The `b` parameter acts like temperature in softmax - high `b` means more uniform
 
 ## 🚀 Quick Start
 
+**Option 1: Direct File Access**
 1. Open `index.html` in a modern web browser
 2. Select a scenario from the dropdown
 3. Start trading and exploring!
 
-No build step required - this is a standalone web application.
+**Option 2: Local Server (Recommended)**
+
+Serve the demo via localhost for the best experience:
+
+```bash
+npx serve .
+```
+
+Then open the URL shown in your terminal (typically http://localhost:3000).
+
+No build step required - the compiled JavaScript is included in the repository.
 
 ## 📚 What You'll Learn
 
@@ -61,27 +72,18 @@ lmsr-demo/
 
 ## 🔧 Development
 
+The `dist/` directory contains compiled JavaScript and is committed to the repository so the demo works out-of-the-box. If you modify the TypeScript source files, you'll need to rebuild.
+
 ### TypeScript Compilation
 
-To compile TypeScript to JavaScript:
-
 ```bash
-# Install TypeScript if needed
-npm install -g typescript
-
-# Compile TypeScript files
-tsc src/core/lmsr.ts src/core/market.ts src/scenarios/scenarios.ts src/app.ts \
-    --target ES2020 \
-    --module ES2020 \
-    --outDir dist \
-    --declaration \
-    --sourceMap
+npx tsc
 ```
 
-Or use the provided configuration:
+Or use the provided configuration explicitly:
 
 ```bash
-tsc --project tsconfig.json
+npx tsc --project tsconfig.json
 ```
 
 ### File Watching
@@ -89,8 +91,10 @@ tsc --project tsconfig.json
 For development with auto-recompilation:
 
 ```bash
-tsc --watch
+npx tsc --watch
 ```
+
+After rebuilding, commit both the TypeScript source changes and the updated `dist/` files.
 
 ## 🎨 Features
 
