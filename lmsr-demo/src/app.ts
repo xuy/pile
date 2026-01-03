@@ -362,7 +362,7 @@ function initializeCharts() {
           beginAtZero: true,
           max: 1,
           ticks: {
-            callback: function(value) {
+            callback: function(value: number | string) {
               return (Number(value) * 100).toFixed(0) + '%';
             }
           }
@@ -396,7 +396,7 @@ function initializeCharts() {
           beginAtZero: true,
           max: 1,
           ticks: {
-            callback: function(value) {
+            callback: function(value: number | string) {
               return (Number(value) * 100).toFixed(0) + '%';
             }
           }
