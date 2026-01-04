@@ -91,7 +91,7 @@ const KINEMATICS = {
 
         if (!ints) return null;
 
-        // Pen Down (Max Y in Canvas Coords)
+        // Forward ambiguity: Pen Down (Max Y in Canvas Coords)
         const P = ints.reduce((a, b) => a.y > b.y ? a : b);
 
         return { P, SL, SR, EL_Virtual, ER_Virtual };
@@ -111,9 +111,16 @@ const KINEMATICS = {
 
         if (!intsL || !intsR) return null;
 
-        // Elbows should be "Up" relative to Pen (Lower Y value than P).
-        const EL = intsL.reduce((a, b) => a.y < b.y ? a : b);
-        const ER = intsR.reduce((a, b) => a.y < b.y ? a : b);
+        // Inverse Selection Strategy: "Elbows Out"
+        // This is crucial for the "Hugging" configuration.
+        // Selecting "Elbows Up" (min Y) or "Elbows In" leads to the crossed-arm state 
+        // which often violates servo constraints.
+
+        // Left Arm: Pick the more LEFT solution (Smaller X)
+        const EL = intsL.reduce((a, b) => a.x < b.x ? a : b);
+
+        // Right Arm: Pick the more RIGHT solution (Larger X)
+        const ER = intsR.reduce((a, b) => a.x > b.x ? a : b);
 
         const angEffL = Math.atan2(EL.y - SL.y, EL.x - SL.x);
         const angEffR = Math.atan2(ER.y - SR.y, ER.x - SR.x);
@@ -128,10 +135,13 @@ const KINEMATICS = {
 
         let dR = (radR * 180 / Math.PI);
 
-        // Normalize angle ranges if they wrap weirdly, but usually fine here.
+        // Normalize angle ranges
+        // e.g. -1 deg -> 359 deg. Or 361 -> 1 deg.
+        while (dL > 180) dL -= 360; while (dL < -180) dL += 360;
+        while (dR > 180) dR -= 360; while (dR < -180) dR += 360;
 
         // Constraints Check: -30 to +60
-        // We allow some floating point tolerance, but generally strict.
+        // We allow some floating point tolerance.
         if (dL < -30.1 || dL > 60.1 || dR < -30.1 || dR > 60.1) {
             return null;
         }

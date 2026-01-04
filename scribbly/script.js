@@ -17,7 +17,7 @@ const state = {
     dL: 0,
     dR: 0,
     penDown: false,
-    path: [],
+    path: [], // Array of {x, y, valid: boolean}
     kRes: null
 };
 
@@ -40,9 +40,7 @@ function init() {
 
     setupEventListeners();
 
-    // Enforce UI defaults
     if (ui.thetaL) {
-        // Force min/max if not set
         ui.thetaL.min = "-30"; ui.thetaL.max = "60";
         state.dL = parseFloat(ui.thetaL.value);
     }
@@ -64,7 +62,15 @@ function worldToScreen(x, y) {
 
 // --- Kinematics ---
 function updateKinematics() {
+    // Only update from state angles if we aren't animating invalid points?
+    // Actually, state.dL/dR are always the valid servo angles.
+    // If we hit an invalid point, we don't update dL/dR, so the robot stays put.
     const res = KINEMATICS.forward(state.dL, state.dR);
+
+    // Check if current forward result matches the constraints?
+    // Forward doesn't enforce input constraints usually, but inverse does.
+    // We assume state.dL/dR are valid.
+
     state.kRes = res;
 
     if (res) {
@@ -72,8 +78,18 @@ function updateKinematics() {
         if (ui.valThetaR) ui.valThetaR.textContent = `${state.dR.toFixed(0)}°`;
         if (ui.posDisplay) ui.posDisplay.textContent = `(${res.P.x.toFixed(1)}, ${res.P.y.toFixed(1)})`;
 
-        if (state.penDown) {
-            state.path.push({ ...res.P });
+        // Manual Drawing (Manual Slider Move)
+        // If pen is down and we are MANUALLY moving, we track it.
+        // But how do we distinguish manual vs animation? 
+        // We can just rely on the fact that animationQueue pushes to path explicitly.
+        // So we ONLY push here if animationQueue is empty?
+        // Or if we are in "Manual Mode".
+        // Let's keep it simple: unique paths.
+        // Actually, for this "Invalid Path" feature, we prefer the Animation Queue to handle pushing points.
+        // If manual, we push here.
+        if (state.penDown && animationQueue.length === 0) {
+            // For manual, we assume valid if we are here (since sliders are limited)
+            state.path.push({ ...res.P, valid: true });
         }
     } else {
         if (ui.posDisplay) ui.posDisplay.textContent = "INVALID / UNREACHABLE";
@@ -88,58 +104,69 @@ function draw() {
     ctx.strokeStyle = '#f3f4f6';
     ctx.lineWidth = 1;
     ctx.beginPath();
-    // Simple floor line ?
     // ctx.moveTo(0, 500); ctx.lineTo(800, 500); 
     ctx.stroke();
 
     // Draw Path
     if (state.path.length > 0) {
-        ctx.strokeStyle = '#2563eb';
         ctx.lineWidth = 2;
-        ctx.beginPath();
-        const p0 = worldToScreen(state.path[0].x, state.path[0].y);
-        ctx.moveTo(p0.x, p0.y);
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+
+        // We draw segments. 
+        // Optimization: draw continuous separate paths for color? 
+        // Or stroke each segment. Stroke each segment is easier to code.
         for (let i = 1; i < state.path.length; i++) {
-            const p = worldToScreen(state.path[i].x, state.path[i].y);
-            ctx.lineTo(p.x, p.y);
+            const p0 = state.path[i - 1];
+            const p1 = state.path[i];
+
+            // Skip large jumps (pen lift)? 
+            // We only pushed points when penDown=true. 
+            // In startShapeBuffer we clear path.
+            // If we supported multiple strokes we'd need a separator.
+            // For now single stroke.
+
+            const s0 = worldToScreen(p0.x, p0.y);
+            const s1 = worldToScreen(p1.x, p1.y);
+
+            ctx.beginPath();
+            ctx.moveTo(s0.x, s0.y);
+            ctx.lineTo(s1.x, s1.y);
+
+            // Logic: Blue if both points valid. Grey if either is invalid.
+            if (p0.valid && p1.valid) {
+                ctx.strokeStyle = '#2563eb'; // Blue
+            } else {
+                ctx.strokeStyle = '#d1d5db'; // Light Grey
+            }
+            ctx.stroke();
         }
-        ctx.stroke();
     }
 
     if (!state.kRes) return;
     const { P, SL, SR, EL_Virtual, ER_Virtual } = state.kRes;
-
     const sSL = worldToScreen(SL.x, SL.y);
     const sSR = worldToScreen(SR.x, SR.y);
     const sP = worldToScreen(P.x, P.y);
 
-    // 1. Draw Body Arms (Reconstruct)
-    // Left: 180 - dL
+    // Draw Arms (same as before) ...
+    // ... Reconstruct Body Arms
     const radL = (180 - state.dL) * Math.PI / 180;
-    const sJ1L = worldToScreen(
-        SL.x + KINEMATICS.CONFIG.L_BODY * Math.cos(radL),
-        SL.y + KINEMATICS.CONFIG.L_BODY * Math.sin(radL)
-    );
+    const sJ1L = worldToScreen(SL.x + KINEMATICS.CONFIG.L_BODY * Math.cos(radL), SL.y + KINEMATICS.CONFIG.L_BODY * Math.sin(radL));
 
-    // Right: 0 + dR
     const radR = (0 + state.dR) * Math.PI / 180;
-    const sJ1R = worldToScreen(
-        SR.x + KINEMATICS.CONFIG.L_BODY * Math.cos(radR),
-        SR.y + KINEMATICS.CONFIG.L_BODY * Math.sin(radR)
-    );
+    const sJ1R = worldToScreen(SR.x + KINEMATICS.CONFIG.L_BODY * Math.cos(radR), SR.y + KINEMATICS.CONFIG.L_BODY * Math.sin(radR));
 
-    // 2. Draw Blue Arms
     const sEL = worldToScreen(EL_Virtual.x, EL_Virtual.y);
     const sER = worldToScreen(ER_Virtual.x, ER_Virtual.y);
 
-    // Render Chains
     ctx.lineCap = 'round'; ctx.lineJoin = 'round';
 
     // Left Chain
-    ctx.strokeStyle = '#06b6d4'; ctx.lineWidth = 8; // Cyan
+    ctx.strokeStyle = '#06b6d4'; ctx.lineWidth = 8;
     ctx.beginPath(); ctx.moveTo(sSL.x, sSL.y); ctx.lineTo(sJ1L.x, sJ1L.y); ctx.stroke();
 
-    ctx.strokeStyle = '#3b82f6'; ctx.lineWidth = 6; // Blue
+    ctx.strokeStyle = '#3b82f6'; ctx.lineWidth = 6;
     ctx.beginPath(); ctx.moveTo(sJ1L.x, sJ1L.y); ctx.lineTo(sEL.x, sEL.y); ctx.stroke();
 
     // Right Chain
@@ -149,7 +176,7 @@ function draw() {
     ctx.strokeStyle = '#3b82f6'; ctx.lineWidth = 6;
     ctx.beginPath(); ctx.moveTo(sJ1R.x, sJ1R.y); ctx.lineTo(sER.x, sER.y); ctx.stroke();
 
-    // 3. Main Arms (Green)
+    // Main Arms
     ctx.strokeStyle = '#22c55e'; ctx.lineWidth = 4;
     ctx.beginPath(); ctx.moveTo(sEL.x, sEL.y); ctx.lineTo(sP.x, sP.y); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(sER.x, sER.y); ctx.lineTo(sP.x, sP.y); ctx.stroke();
@@ -175,17 +202,26 @@ function runAnimation() {
     const step = animationQueue.shift();
     state.penDown = step.penDown;
 
+    if (!state.penDown) {
+        // Just moving logic if we wanted to support Pen Up traversal (e.g. rapid move)
+        // For now we just skip or move to point?
+        return;
+    }
+
     const inputs = KINEMATICS.inverse(step.x, step.y);
     if (inputs) {
         state.dL = inputs.thetaL;
         state.dR = inputs.thetaR;
-        // Sync UI
         ui.thetaL.value = state.dL;
         ui.thetaR.value = state.dR;
+
+        // Push valid
+        state.path.push({ x: step.x, y: step.y, valid: true });
+
     } else {
-        // unreachable or constrained out
-        // console.log("Skipping point - out of bounds");
-        // We could optionally stop animation here
+        // Unreachable: Push invalid
+        // Robot does NOT move.
+        state.path.push({ x: step.x, y: step.y, valid: false });
     }
 }
 
@@ -194,16 +230,15 @@ function startShapeBuffer(points) {
     state.penDown = false;
     animationQueue = [];
     if (points.length > 0) {
-        // Move to start with pen up
-        animationQueue.push({ x: points[0].x, y: points[0].y, penDown: false });
+        // Lead-in (move to start without drawing? Or just jump?)
+        // Let's just jump logic for simplicity or insert a move step.
+        // For valid visualization, let's just push drawing steps.
         for (const p of points) {
             animationQueue.push({ x: p.x, y: p.y, penDown: true });
         }
-        animationQueue.push({ x: points[points.length - 1].x, y: points[points.length - 1].y, penDown: false });
     }
 }
 
-// Helper: Point Generator
 function generateCircle(cx, cy, r, steps = 60) {
     const pts = [];
     for (let i = 0; i <= steps; i++) {
@@ -214,6 +249,8 @@ function generateCircle(cx, cy, r, steps = 60) {
 }
 
 function loop() {
+    // Run multiple animation steps per frame for speed? or 1 per frame?
+    // 1 per frame (60fps) is good for viz.
     if (animationQueue.length > 0) runAnimation();
     updateKinematics();
     draw();
@@ -222,24 +259,23 @@ function loop() {
 
 // --- Event Listeners ---
 function setupEventListeners() {
-    if (ui.thetaL) ui.thetaL.addEventListener('input', (e) => {
+    ui.thetaL.addEventListener('input', (e) => {
         state.dL = parseFloat(e.target.value);
         animationQueue = [];
     });
-    if (ui.thetaR) ui.thetaR.addEventListener('input', (e) => {
+    ui.thetaR.addEventListener('input', (e) => {
         state.dR = parseFloat(e.target.value);
         animationQueue = [];
     });
 
-    if (ui.btnClear) ui.btnClear.addEventListener('click', () => {
+    ui.btnClear.addEventListener('click', () => {
         state.path = [];
         state.penDown = false;
         ctx.clearRect(0, 0, 800, 600);
     });
 
-    // Test Shapes
     document.getElementById('btn-circle')?.addEventListener('click', () => {
-        // Draw circle below shoulders (Y=0). try Y=200
+        // Draw circle at Y=200
         startShapeBuffer(generateCircle(0, 200, 40));
     });
 
@@ -256,5 +292,4 @@ function setupEventListeners() {
     });
 }
 
-// Init
 init();
