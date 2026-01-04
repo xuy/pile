@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scribbly Mechanism Tuner (V3 Reference)</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background: #f1f5f9;
+            color: #1e293b;
+        }
+
+        h1 {
+            margin: 15px 0 5px;
+            color: #0f172a;
+            font-size: 1.5rem;
+        }
+
+        p.subtitle {
+            margin: 0 0 20px;
+            color: #64748b;
+            font-size: 0.9rem;
+        }
+
+        .main-layout {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+            justify-content: center;
+            width: 100%;
+            max-width: 1000px;
+        }
+
+        .canvas-container {
+            background: white;
+            padding: 10px;
+            border-radius: 12px;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+        }
+
+        .controls {
+            flex: 1;
+            min-width: 300px;
+            background: white;
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            max-height: 600px;
+            overflow-y: auto;
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        label {
+            display: flex;
+            justify-content: space-between;
+            font-weight: 600;
+            font-size: 0.85rem;
+            color: #475569;
+        }
+
+        input[type=range] {
+            width: 100%;
+            accent-color: #3b82f6;
+        }
+
+        .val {
+            font-family: monospace;
+            color: #3b82f6;
+        }
+
+        .divider {
+            height: 1px;
+            background: #e2e8f0;
+            margin: 10px 0;
+        }
+
+        .info-box {
+            background: #eff6ff;
+            border-left: 4px solid #3b82f6;
+            padding: 12px;
+            border-radius: 4px;
+            font-size: 0.85rem;
+            color: #1e3a8a;
+        }
+
+        .tog-group {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            font-size: 0.9rem;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Scribbly Mechanism Tuner</h1>
+    <p class="subtitle">Reference for "Rigid Bent Arm" topology.</p>
+
+    <div class="main-layout">
+        <div class="canvas-container">
+            <canvas id="simCanvas" width="600" height="500"></canvas>
+        </div>
+
+        <div class="controls">
+            <div class="info-box">
+                <strong>Simulates:</strong> Rigid connection between Body Arm & Upper Arm.
+                <br>This creates a single "Effective Arm" (Dashed Red Line).
+            </div>
+
+            <div class="control-group">
+                <label>Left Servo <span id="v-tL" class="val">0°</span></label>
+                <input type="range" id="tL" min="-60" max="60" value="0">
+            </div>
+            <div class="control-group">
+                <label>Right Servo <span id="v-tR" class="val">0°</span></label>
+                <input type="range" id="tR" min="-60" max="60" value="0">
+            </div>
+
+            <div class="divider"></div>
+            <strong>Geometry Config</strong>
+
+            <div class="control-group">
+                <label>Body Arm Length (Cyan) <span id="v-l1" class="val">50</span></label>
+                <input type="range" id="l1" min="20" max="100" value="50">
+            </div>
+
+            <div class="control-group">
+                <label>Blue Arm Length (Blue) <span id="v-l2" class="val">80</span></label>
+                <input type="range" id="l2" min="20" max="200" value="80">
+            </div>
+
+            <div class="control-group">
+                <label>Bend Angle <span id="v-bend" class="val">120°</span></label>
+                <input type="range" id="bend" min="90" max="170" value="120">
+            </div>
+
+            <div class="control-group">
+                <label>Main Arm Length (Green) <span id="v-l3" class="val">180</span></label>
+                <input type="range" id="l3" min="100" max="300" value="180">
+            </div>
+
+            <div class="divider"></div>
+
+            <div class="tog-group">
+                <input type="checkbox" id="showEff" checked>
+                <label for="showEff" style="display:inline; font-weight:normal">Show Effective Radius</label>
+            </div>
+            <div id="eff-readout" style="font-size:0.8rem; color:#64748b; margin-top:5px;"></div>
+
+        </div>
+    </div>
+
+    <script>
+        const ctx = document.getElementById('simCanvas').getContext('2d');
+        const cx = 300, cy = 100;
+
+        const state = {
+            thetaL: 0,
+            thetaR: 0,
+            conf: {
+                d_shoulders: 140, // Match updated default
+                l_body: 50,
+                l_blue: 80,
+                angle_bend: 120, // Internal angle at elbow
+                l_main: 180
+            },
+            showEffective: true
+        };
+
+        // UI Bindings
+        const bind = (id, key, subkey = null) => {
+            const el = document.getElementById(id);
+            el.addEventListener('input', e => {
+                const val = +e.target.value;
+                if (subkey) state[key][subkey] = val;
+                else state[key] = val;
+
+                const disp = document.getElementById('v-' + id);
+                if (disp) disp.textContent = val + (id.includes('t') || id.includes('bend') ? '°' : '');
+
+                draw();
+            });
+        };
+
+        bind('tL', 'thetaL');
+        bind('tR', 'thetaR');
+        bind('l1', 'conf', 'l_body');
+        bind('l2', 'conf', 'l_blue');
+        bind('bend', 'conf', 'angle_bend');
+        bind('l3', 'conf', 'l_main');
+
+        document.getElementById('showEff').addEventListener('change', e => {
+            state.showEffective = e.target.checked;
+            draw();
+        });
+
+        function polar(origin, r, deg) {
+            const rad = deg * Math.PI / 180;
+            return { x: origin.x + r * Math.cos(rad), y: origin.y + r * Math.sin(rad) };
+        }
+
+        function solveIntersection(p1, r1, p2, r2) {
+            const dx = p2.x - p1.x, dy = p2.y - p1.y;
+            const d = Math.sqrt(dx * dx + dy * dy);
+            if (d > r1 + r2 || d < Math.abs(r1 - r2) || d === 0) return null;
+            const a = (r1 * r1 - r2 * r2 + d * d) / (2 * d);
+            const h = Math.sqrt(r1 * r1 - a * a);
+            const x2 = p1.x + a * (dx / d), y2 = p1.y + a * (dy / d);
+            // Want solution with higher Y (down)
+            const s1 = { x: x2 + h * (dy / d), y: y2 - h * (dx / d) };
+            const s2 = { x: x2 - h * (dy / d), y: y2 + h * (dx / d) };
+            return s1.y > s2.y ? s1 : s2;
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, 600, 500);
+
+            const SL = { x: cx - state.conf.d_shoulders / 2, y: cy };
+            const SR = { x: cx + state.conf.d_shoulders / 2, y: cy };
+
+            // Left Chain Calculation
+            // Body angle: 0 = LEFT (-180 global). 
+            const angL_Body = 180 + state.thetaL; // Global deg
+            const JL1 = polar(SL, state.conf.l_body, angL_Body);
+
+            // Connected Blue Arm (Rigid)
+            const angL_Blue = angL_Body - (180 - state.conf.angle_bend);
+            const JL2 = polar(JL1, state.conf.l_blue, angL_Blue);
+
+            // Right Chain
+            // Servo 0 is Right (0).
+            const angR_Body = 0 + state.thetaR;
+            const JR1 = polar(SR, state.conf.l_body, angR_Body);
+            const angR_Blue = angR_Body + (180 - state.conf.angle_bend);
+            const JR2 = polar(JR1, state.conf.l_blue, angR_Blue);
+
+            // Solve Pen
+            const P = solveIntersection(JL2, state.conf.l_main, JR2, state.conf.l_main);
+
+            // --- Rendering ---
+
+            // Shoulders
+            ctx.fillStyle = '#333';
+            ctx.beginPath(); ctx.arc(SL.x, SL.y, 5, 0, Math.PI * 2); ctx.fill();
+            ctx.beginPath(); ctx.arc(SR.x, SR.y, 5, 0, Math.PI * 2); ctx.fill();
+
+            // Effective Radius Calculation (Dash)
+            if (state.showEffective) {
+                // Vector SL -> JL2
+                const effDist = Math.hypot(JL2.x - SL.x, JL2.y - SL.y);
+                const effAng = Math.atan2(JL2.y - SL.y, JL2.x - SL.x) * 180 / Math.PI;
+                // Offset from servo angle
+                const offset = effAng - angL_Body;
+
+                document.getElementById('eff-readout').innerHTML =
+                    `Effective L: <b>${effDist.toFixed(1)}</b> | Offset: <b>${offset.toFixed(1)}°</b>`;
+
+                ctx.strokeStyle = '#ef4444';
+                ctx.setLineDash([5, 5]); ctx.lineWidth = 2;
+                ctx.beginPath(); ctx.moveTo(SL.x, SL.y); ctx.lineTo(JL2.x, JL2.y); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(SR.x, SR.y); ctx.lineTo(JR2.x, JR2.y); ctx.stroke();
+                ctx.setLineDash([]);
+            }
+
+            // Left Arm
+            ctx.lineCap = 'round';
+            ctx.strokeStyle = '#06b6d4'; ctx.lineWidth = 10; // Cyan Body
+            ctx.beginPath(); ctx.moveTo(SL.x, SL.y); ctx.lineTo(JL1.x, JL1.y); ctx.stroke();
+
+            ctx.strokeStyle = '#3b82f6'; ctx.lineWidth = 8; // Blue
+            ctx.beginPath(); ctx.moveTo(JL1.x, JL1.y); ctx.lineTo(JL2.x, JL2.y); ctx.stroke();
+
+            // Right Arm
+            ctx.strokeStyle = '#06b6d4'; ctx.lineWidth = 10;
+            ctx.beginPath(); ctx.moveTo(SR.x, SR.y); ctx.lineTo(JR1.x, JR1.y); ctx.stroke();
+
+            ctx.strokeStyle = '#3b82f6'; ctx.lineWidth = 8;
+            ctx.beginPath(); ctx.moveTo(JR1.x, JR1.y); ctx.lineTo(JR2.x, JR2.y); ctx.stroke();
+
+            // Main Arms
+            if (P) {
+                ctx.strokeStyle = '#22c55e'; ctx.lineWidth = 6; // Green
+                ctx.beginPath(); ctx.moveTo(JL2.x, JL2.y); ctx.lineTo(P.x, P.y); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(JR2.x, JR2.y); ctx.lineTo(P.x, P.y); ctx.stroke();
+
+                // Pen
+                ctx.fillStyle = '#ef4444';
+                ctx.beginPath(); ctx.arc(P.x, P.y, 8, 0, Math.PI * 2); ctx.fill();
+            }
+        }
+
+        draw();
+    </script>
+</body>
+
+</html>
