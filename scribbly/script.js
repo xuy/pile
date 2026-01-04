@@ -9,7 +9,13 @@ KINEMATICS.setConfig({
     L_BODY: 50,
     L_BLUE: 80,
     A_BEND: 120,
-    L_MAIN: 180
+    A_BEND: 120,
+    L_MAIN: 180,
+    // Safe Area
+    SAFE_W: 100,
+    SAFE_H: 100,
+    SAFE_X: 0,
+    SAFE_Y: 200
 });
 
 // --- State ---
@@ -18,7 +24,8 @@ const state = {
     dR: 0,
     penDown: false,
     path: [], // Array of {x, y, valid: boolean}
-    kRes: null
+    kRes: null,
+    speed: 1 // Steps per frame
 };
 
 // --- DOM Elements ---
@@ -107,6 +114,20 @@ function draw() {
     // ctx.moveTo(0, 500); ctx.lineTo(800, 500); 
     ctx.stroke();
 
+    // Draw Safe Area
+    const sw = KINEMATICS.CONFIG.SAFE_W;
+    const sh = KINEMATICS.CONFIG.SAFE_H;
+    const sx = KINEMATICS.CONFIG.SAFE_X;
+    const sy = KINEMATICS.CONFIG.SAFE_Y;
+    const sa_tl = worldToScreen(sx - sw / 2, sy - sh / 2);
+    const sa_br = worldToScreen(sx + sw / 2, sy + sh / 2);
+
+    ctx.strokeStyle = '#e5e7eb';
+    ctx.setLineDash([5, 5]);
+    ctx.lineWidth = 1;
+    ctx.strokeRect(sa_tl.x, sa_tl.y, sa_br.x - sa_tl.x, sa_br.y - sa_tl.y);
+    ctx.setLineDash([]);
+
     // Draw Path
     if (state.path.length > 0) {
         ctx.lineWidth = 2;
@@ -126,6 +147,10 @@ function draw() {
             // If we supported multiple strokes we'd need a separator.
             // For now single stroke.
 
+            if (!p1.penDown) {
+                continue;
+            }
+
             const s0 = worldToScreen(p0.x, p0.y);
             const s1 = worldToScreen(p1.x, p1.y);
 
@@ -133,12 +158,12 @@ function draw() {
             ctx.moveTo(s0.x, s0.y);
             ctx.lineTo(s1.x, s1.y);
 
-            // Logic: Blue if both points valid. Grey if either is invalid.
-            if (p0.valid && p1.valid) {
-                ctx.strokeStyle = '#2563eb'; // Blue
+            if (p1.valid) {
+                ctx.strokeStyle = '#000000';
             } else {
-                ctx.strokeStyle = '#d1d5db'; // Light Grey
+                ctx.strokeStyle = 'rgba(255, 0, 0, 0.5)';
             }
+            ctx.lineWidth = 2;
             ctx.stroke();
         }
     }
@@ -200,14 +225,10 @@ function runAnimation() {
         return;
     }
     const step = animationQueue.shift();
+    const wasPenDown = state.penDown; // Track previous state
     state.penDown = step.penDown;
 
-    if (!state.penDown) {
-        // Just moving logic if we wanted to support Pen Up traversal (e.g. rapid move)
-        // For now we just skip or move to point?
-        return;
-    }
-
+    // Movement Logic
     const inputs = KINEMATICS.inverse(step.x, step.y);
     if (inputs) {
         state.dL = inputs.thetaL;
@@ -215,13 +236,17 @@ function runAnimation() {
         ui.thetaL.value = state.dL;
         ui.thetaR.value = state.dR;
 
-        // Push valid
-        state.path.push({ x: step.x, y: step.y, valid: true });
+        // Push to path regardless of pen state to visualize travel
+        state.path.push({ x: step.x, y: step.y, valid: true, penDown: state.penDown });
 
     } else {
-        // Unreachable: Push invalid
-        // Robot does NOT move.
-        state.path.push({ x: step.x, y: step.y, valid: false });
+        // Unreachable
+        // If pen is down, we might want to show it as invalid. 
+        // If pen is up, we just ignore? 
+        // Let's show invalid point if pen is down.
+        if (state.penDown) {
+            state.path.push({ x: step.x, y: step.y, valid: false, penDown: state.penDown });
+        }
     }
 }
 
@@ -237,6 +262,15 @@ function startShapeBuffer(points) {
             animationQueue.push({ x: p.x, y: p.y, penDown: true });
         }
     }
+
+    // Adaptive Speed Calculation
+    // Target duration: ~3 seconds @ 60fps = 180 frames
+    const TARGET_FRAMES = 180;
+    state.speed = Math.ceil(animationQueue.length / TARGET_FRAMES);
+
+    // Clamp limits
+    if (state.speed < 1) state.speed = 1;
+    if (state.speed > 50) state.speed = 50; // Cap max speed to avoid lag/skips
 }
 
 function generateCircle(cx, cy, r, steps = 60) {
@@ -251,7 +285,12 @@ function generateCircle(cx, cy, r, steps = 60) {
 function loop() {
     // Run multiple animation steps per frame for speed? or 1 per frame?
     // 1 per frame (60fps) is good for viz.
-    if (animationQueue.length > 0) runAnimation();
+    // Run multiple animation steps per frame for speed
+    // 1 per frame is too slow for complex SVGs.
+    // Adaptive Speed
+    for (let i = 0; i < state.speed; i++) {
+        if (animationQueue.length > 0) runAnimation();
+    }
     updateKinematics();
     draw();
     requestAnimationFrame(loop);
@@ -310,6 +349,197 @@ function setupEventListeners() {
         const p0 = { x: -50, y: 200 };
         const p1 = { x: 50, y: 200 };
         startShapeBuffer(interpolateLine(p0, p1));
+    });
+
+    // SVG Handling
+    const fileInput = document.getElementById('file-svg');
+    const drawBtn = document.getElementById('btn-draw-svg');
+    let loadedSVGContent = null;
+
+    fileInput?.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = (evt) => {
+                loadedSVGContent = evt.target.result;
+                drawBtn.disabled = false;
+            };
+            reader.readAsText(file);
+        }
+    });
+
+    drawBtn?.addEventListener('click', () => {
+        if (loadedSVGContent) {
+            processSVG(loadedSVGContent);
+        }
+    });
+
+    // Tab Handling
+    const tabs = document.querySelectorAll('.tab-btn');
+    const contents = document.querySelectorAll('.tab-content');
+
+    tabs.forEach(tab => {
+        tab.addEventListener('click', () => {
+            // Remove active class from all
+            tabs.forEach(t => t.classList.remove('active'));
+            contents.forEach(c => c.classList.remove('active'));
+
+            // Add active to clicked
+            tab.classList.add('active');
+            const targetId = tab.getAttribute('data-tab');
+            document.getElementById(targetId)?.classList.add('active');
+        });
+    });
+}
+
+function processSVG(svgString) {
+    // 1. Parse SVG
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(svgString, "image/svg+xml");
+    const svgEl = doc.querySelector('svg');
+
+    if (!svgEl) {
+        console.error("No SVG found");
+        return;
+    }
+
+    // 2. Flatten Paths (Using a hidden container to use functionality like getTotalLength)
+    // Note: getTotalLength might require the element to be in the DOM.
+    const container = document.createElement('div');
+    container.style.position = 'absolute';
+    container.style.visibility = 'hidden';
+    container.style.pointerEvents = 'none';
+    document.body.appendChild(container); // Must append to document
+    container.appendChild(svgEl);
+
+    // Get all 'path' elements. 
+    // TODO: Support circle, rect, etc by converting them or just querySelectorAll('*') and checking?
+    // For MVP, specialized shapes often used in SVGs (rect, circle) might need polyfill.
+    // Let's grab 'path' for now as most complex drawings use paths.
+    // If SVGs use basic shapes, we should convert them? 
+    // SVGs saved from editors often use paths.
+
+    const paths = Array.from(svgEl.querySelectorAll('path'));
+    // Start Drawing
+    // We construct the animation queue manually to handle jumps (Pen Up)
+    const queue = [];
+
+    // NOTE: startShapeBuffer clears the queue. We will use a modified helper or just manually fill.
+    // Let's modify startShapeBuffer to take raw points or just overwrite it here.
+    // Actually best to reuse startShapeBuffer but maybe make it more flexible?
+    // Let's just build the queue and direct-set it for now to ensure correct Pen Up logic.
+
+    state.path = [];
+    state.penDown = false;
+    animationQueue = [];
+
+    let currentPathIndex = 0;
+
+    // We already flattened everything into allPoints, but we lost the "path" boundaries!
+    // Ah, wait. In step 2 I flattened ALL paths into `allPoints`. 
+    // This merges them into one continuous line which is WRONG for multiple SVG paths.
+    // I need to iterate paths and add them separately.
+
+    // Refactoring Step 2 to preserve path separation:
+    const svgPaths = []; // Array of arrays of points
+    paths.forEach(path => {
+        const pathPts = [];
+        const len = path.getTotalLength();
+        const step = 2;
+        let lastP = null;
+
+        for (let l = 0; l <= len; l += step) {
+            const p = path.getPointAtLength(l);
+
+            // Check for Jumps (Subpaths caused by 'M' commands)
+            // If distance to previous point is significantly larger than step, it's a jump.
+            // DOM API getPointAtLength skips the gap, so coordinates jump instantly.
+            if (lastP) {
+                const dist = Math.hypot(p.x - lastP.x, p.y - lastP.y);
+                if (dist > step * 4) { // Tolerance (e.g. 8px jump for 2px step)
+                    // End current subpath and start new one
+                    if (pathPts.length > 0) {
+                        svgPaths.push([...pathPts]);
+                        pathPts.length = 0;
+                    }
+                }
+            }
+
+            pathPts.push({ x: p.x, y: p.y });
+            lastP = p;
+        }
+
+        // Force endpoint
+        // Check jump to endpoint too? usually endpoint is just the end of last segment.
+        const p = path.getPointAtLength(len);
+        if (lastP) {
+            const dist = Math.hypot(p.x - lastP.x, p.y - lastP.y);
+            if (dist > step * 4) {
+                if (pathPts.length > 0) {
+                    svgPaths.push([...pathPts]);
+                    pathPts.length = 0;
+                }
+            }
+        }
+        pathPts.push({ x: p.x, y: p.y });
+
+        if (pathPts.length > 0) {
+            svgPaths.push(pathPts);
+        }
+    });
+
+    document.body.removeChild(container);
+
+    // Recalculate Bounding Box on ALL points
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    svgPaths.forEach(subPath => {
+        subPath.forEach(p => {
+            if (p.x < minX) minX = p.x;
+            if (p.x > maxX) maxX = p.x;
+            if (p.y < minY) minY = p.y;
+            if (p.y > maxY) maxY = p.y;
+        });
+    });
+
+    const bboxW = maxX - minX;
+    const bboxH = maxY - minY;
+
+    // 4. Scale and Translate to Safe Area
+    const safeW = KINEMATICS.CONFIG.SAFE_W;
+    const safeH = KINEMATICS.CONFIG.SAFE_H;
+
+    // Scale Logic (same as before)
+    const scaleX = safeW / bboxW;
+    const scaleY = safeH / bboxH;
+    const scale = Math.min(scaleX, scaleY) * 0.9;
+    const cx = (minX + maxX) / 2;
+    const cy = (minY + maxY) / 2;
+    const tx = KINEMATICS.CONFIG.SAFE_X;
+    const ty = KINEMATICS.CONFIG.SAFE_Y;
+
+    // Transform and Queue
+    svgPaths.forEach(subPath => {
+        if (subPath.length === 0) return;
+
+        // Transform first point
+        const p0 = subPath[0];
+        const tx0 = tx + (p0.x - cx) * scale;
+        const ty0 = ty + (p0.y - cy) * scale;
+
+        // 1. Travel (Pen Up) to start of this path
+        animationQueue.push({ x: tx0, y: ty0, penDown: false });
+
+        // 2. Draw (Pen Down) through the path
+        subPath.forEach(p => {
+            const tpx = tx + (p.x - cx) * scale;
+            const tpy = ty + (p.y - cy) * scale;
+            animationQueue.push({ x: tpx, y: tpy, penDown: true });
+        });
+
+        // Optional: Lift pen at end of path?
+        // Not strictly necessary as the next loop will do a Pen Up move.
+        // But let's be explicit.
+        animationQueue.push({ x: tx + (subPath[subPath.length - 1].x - cx) * scale, y: ty + (subPath[subPath.length - 1].y - cy) * scale, penDown: false });
     });
 }
 

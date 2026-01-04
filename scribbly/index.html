@@ -21,30 +21,49 @@
             </div>
 
             <aside class="controls">
-                <div class="control-group">
-                    <h2>Manual Control</h2>
-                    <label>
-                        Left Servo Angle (&theta;<sub>L</sub>)
-                        <input type="range" id="thetaL" min="-30" max="60" value="0">
-                        <span id="val-thetaL">0&deg;</span>
-                    </label>
-                    <label>
-                        Right Servo Angle (&theta;<sub>R</sub>)
-                        <input type="range" id="thetaR" min="-30" max="60" value="0">
-                        <span id="val-thetaR">0&deg;</span>
-                    </label>
-                    <span id="val-thetaR">0&deg;</span>
-                    </label>
-                    <button id="btn-pen-toggle" style="margin-top: 10px; width: 100%;">Pen Down</button>
+                <div class="tabs">
+                    <button class="tab-btn active" data-tab="tab-manual">Manual</button>
+                    <button class="tab-btn" data-tab="tab-patterns">Patterns</button>
+                    <button class="tab-btn" data-tab="tab-svgs">SVGs</button>
                 </div>
 
-                <div class="control-group">
-                    <h2>Actions</h2>
-                    <button id="btn-clear">Clear Canvas</button>
-                    <button id="btn-line">Draw Line</button>
-                    <button id="btn-rect">Draw Rectangle</button>
-                    <button id="btn-circle">Draw Circle</button>
-                    <!-- <button id="btn-test">Run Tests</button> -->
+                <div id="tab-manual" class="tab-content active">
+                    <div class="control-group">
+                        <h2>Manual Control</h2>
+                        <label>
+                            Left Servo Angle (&theta;<sub>L</sub>)
+                            <input type="range" id="thetaL" min="-30" max="60" value="0">
+                            <span id="val-thetaL">0&deg;</span>
+                        </label>
+                        <label>
+                            Right Servo Angle (&theta;<sub>R</sub>)
+                            <input type="range" id="thetaR" min="-30" max="60" value="0">
+                            <span id="val-thetaR">0&deg;</span>
+                        </label>
+                        <button id="btn-pen-toggle" style="margin-top: 10px; width: 100%;">Pen Down</button>
+                    </div>
+                </div>
+
+                <div id="tab-patterns" class="tab-content">
+                    <div class="control-group">
+                        <h2>Standard Patterns</h2>
+                        <button id="btn-line">Draw Line</button>
+                        <button id="btn-rect">Draw Rectangle</button>
+                        <button id="btn-circle">Draw Circle</button>
+                    </div>
+                </div>
+
+                <div id="tab-svgs" class="tab-content">
+                    <div class="control-group">
+                        <h2>SVG Drawing</h2>
+                        <p class="hint">Upload an SVG file to draw.</p>
+                        <input type="file" id="file-svg" accept=".svg" style="max-width: 100%; margin-bottom: 10px;">
+                        <button id="btn-draw-svg" disabled>Draw SVG</button>
+                    </div>
+                </div>
+
+                <div class="control-group" style="margin-top: 2rem; border-top: 1px solid #e5e7eb; padding-top: 1rem;">
+                    <button id="btn-clear" style="background-color: #ef4444;">Clear Canvas</button>
                 </div>
 
                 <div class="status-panel">
