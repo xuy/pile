@@ -25,7 +25,9 @@ const state = {
     penDown: false,
     path: [], // Array of {x, y, valid: boolean}
     kRes: null,
-    speed: 1 // Steps per frame
+    speed: 1, // Steps per frame
+    isPaused: false,
+    totalSteps: 0
 };
 
 // --- DOM Elements ---
@@ -271,6 +273,15 @@ function startShapeBuffer(points) {
     // Clamp limits
     if (state.speed < 1) state.speed = 1;
     if (state.speed > 50) state.speed = 50; // Cap max speed to avoid lag/skips
+
+    // Init Progress
+    state.totalSteps = animationQueue.length;
+    state.isPaused = false;
+
+    // Show Controls
+    const controls = document.getElementById('playback-controls');
+    if (controls) controls.style.display = 'block';
+    updatePlaybackUI();
 }
 
 function generateCircle(cx, cy, r, steps = 60) {
@@ -283,17 +294,34 @@ function generateCircle(cx, cy, r, steps = 60) {
 }
 
 function loop() {
-    // Run multiple animation steps per frame for speed? or 1 per frame?
-    // 1 per frame (60fps) is good for viz.
-    // Run multiple animation steps per frame for speed
-    // 1 per frame is too slow for complex SVGs.
-    // Adaptive Speed
-    for (let i = 0; i < state.speed; i++) {
-        if (animationQueue.length > 0) runAnimation();
+    // Logic: If Paused, do nothing but draw
+    if (!state.isPaused) {
+        // Adaptive Speed
+        for (let i = 0; i < state.speed; i++) {
+            if (animationQueue.length > 0) runAnimation();
+        }
     }
+
+    // Update Progress Bar
+    if (state.totalSteps > 0) {
+        const progress = document.getElementById('progress-bar');
+        if (progress) {
+            const completed = state.totalSteps - animationQueue.length;
+            progress.value = (completed / state.totalSteps) * 100;
+        }
+    }
+
     updateKinematics();
     draw();
     requestAnimationFrame(loop);
+}
+
+function updatePlaybackUI() {
+    const btnPause = document.getElementById('btn-pause');
+    if (btnPause) {
+        btnPause.textContent = state.isPaused ? "Resume" : "Pause";
+        btnPause.style.backgroundColor = state.isPaused ? "#10b981" : "#f59e0b"; // Green if Resume, Amber if Pause
+    }
 }
 
 // --- Event Listeners ---
@@ -374,6 +402,21 @@ function setupEventListeners() {
         }
     });
 
+    // Playback Controls
+    document.getElementById('btn-pause')?.addEventListener('click', () => {
+        state.isPaused = !state.isPaused;
+        updatePlaybackUI();
+    });
+
+    document.getElementById('btn-stop')?.addEventListener('click', () => {
+        animationQueue = [];
+        state.path = [];
+        state.totalSteps = 0;
+        state.penDown = false;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        document.getElementById('playback-controls').style.display = 'none';
+    });
+
     // Tab Handling
     const tabs = document.querySelectorAll('.tab-btn');
     const contents = document.querySelectorAll('.tab-content');
@@ -419,7 +462,10 @@ function processSVG(svgString) {
     // If SVGs use basic shapes, we should convert them? 
     // SVGs saved from editors often use paths.
 
-    const paths = Array.from(svgEl.querySelectorAll('path'));
+    // Select all renderable SVG shapes that support getTotalLength() / getPointAtLength()
+    const validTags = ['path', 'rect', 'circle', 'ellipse', 'line', 'polyline', 'polygon'];
+    const selector = validTags.join(', ');
+    const elements = Array.from(svgEl.querySelectorAll(selector));
     // Start Drawing
     // We construct the animation queue manually to handle jumps (Pen Up)
     const queue = [];
@@ -442,22 +488,36 @@ function processSVG(svgString) {
 
     // Refactoring Step 2 to preserve path separation:
     const svgPaths = []; // Array of arrays of points
-    paths.forEach(path => {
+    // We can compute bbox on the fly
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+
+    elements.forEach(el => {
         const pathPts = [];
-        const len = path.getTotalLength();
+        let len = 0;
+
+        try {
+            len = el.getTotalLength();
+        } catch (e) {
+            console.warn("Element extraction failed", e);
+            return;
+        }
+
         const step = 2;
         let lastP = null;
 
         for (let l = 0; l <= len; l += step) {
-            const p = path.getPointAtLength(l);
+            const p = el.getPointAtLength(l);
+
+            // BBox (Compute on fly)
+            if (p.x < minX) minX = p.x;
+            if (p.x > maxX) maxX = p.x;
+            if (p.y < minY) minY = p.y;
+            if (p.y > maxY) maxY = p.y;
 
             // Check for Jumps (Subpaths caused by 'M' commands)
-            // If distance to previous point is significantly larger than step, it's a jump.
-            // DOM API getPointAtLength skips the gap, so coordinates jump instantly.
             if (lastP) {
                 const dist = Math.hypot(p.x - lastP.x, p.y - lastP.y);
-                if (dist > step * 4) { // Tolerance (e.g. 8px jump for 2px step)
-                    // End current subpath and start new one
+                if (dist > step * 4) {
                     if (pathPts.length > 0) {
                         svgPaths.push([...pathPts]);
                         pathPts.length = 0;
@@ -470,18 +530,25 @@ function processSVG(svgString) {
         }
 
         // Force endpoint
-        // Check jump to endpoint too? usually endpoint is just the end of last segment.
-        const p = path.getPointAtLength(len);
-        if (lastP) {
-            const dist = Math.hypot(p.x - lastP.x, p.y - lastP.y);
-            if (dist > step * 4) {
-                if (pathPts.length > 0) {
-                    svgPaths.push([...pathPts]);
-                    pathPts.length = 0;
+        try {
+            const p = el.getPointAtLength(len);
+
+            if (p.x < minX) minX = p.x;
+            if (p.x > maxX) maxX = p.x;
+            if (p.y < minY) minY = p.y;
+            if (p.y > maxY) maxY = p.y;
+
+            if (lastP) {
+                const dist = Math.hypot(p.x - lastP.x, p.y - lastP.y);
+                if (dist > step * 4) {
+                    if (pathPts.length > 0) {
+                        svgPaths.push([...pathPts]);
+                        pathPts.length = 0;
+                    }
                 }
             }
-        }
-        pathPts.push({ x: p.x, y: p.y });
+            pathPts.push({ x: p.x, y: p.y });
+        } catch (e) { }
 
         if (pathPts.length > 0) {
             svgPaths.push(pathPts);
@@ -490,16 +557,8 @@ function processSVG(svgString) {
 
     document.body.removeChild(container);
 
-    // Recalculate Bounding Box on ALL points
-    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-    svgPaths.forEach(subPath => {
-        subPath.forEach(p => {
-            if (p.x < minX) minX = p.x;
-            if (p.x > maxX) maxX = p.x;
-            if (p.y < minY) minY = p.y;
-            if (p.y > maxY) maxY = p.y;
-        });
-    });
+    // BBox is already computed!
+    // Eliminate the separate Double Loop.
 
     const bboxW = maxX - minX;
     const bboxH = maxY - minY;
@@ -541,6 +600,15 @@ function processSVG(svgString) {
         // But let's be explicit.
         animationQueue.push({ x: tx + (subPath[subPath.length - 1].x - cx) * scale, y: ty + (subPath[subPath.length - 1].y - cy) * scale, penDown: false });
     });
+
+    // Init Progress
+    state.totalSteps = animationQueue.length;
+    state.isPaused = false;
+
+    // Show Controls
+    const controls = document.getElementById('playback-controls');
+    if (controls) controls.style.display = 'block';
+    updatePlaybackUI();
 }
 
 function interpolateLine(p0, p1, step = 2) {

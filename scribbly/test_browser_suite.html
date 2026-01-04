@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scribbly SVG Logic Unit Test</title>
+    <style>
+        body {
+            font-family: monospace;
+            padding: 20px;
+        }
+
+        .pass {
+            color: green;
+            font-weight: bold;
+        }
+
+        .fail {
+            color: red;
+            font-weight: bold;
+        }
+
+        .log {
+            margin-bottom: 5px;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Scribbly Logic Test Suite</h1>
+    <div id="results">Running tests...</div>
+
+    <!-- MOCK UI ELEMENTS REQUIRED BY script.js -->
+    <div style="display:none;">
+        <input id="thetaL" value="0">
+        <input id="thetaR" value="0">
+        <button id="btn-clear"></button>
+        <button id="btn-circle"></button>
+        <button id="btn-rect"></button>
+        <button id="btn-line"></button>
+        <input type="file" id="file-svg">
+        <button id="btn-draw-svg"></button>
+        <div class="tab-btn"></div>
+        <div class="tab-content"></div>
+        <canvas id="canvas"></canvas>
+    </div>
+
+    <!-- Load Kinematics -->
+    <script src="kinematics.js"></script>
+
+    <!-- Load Script -->
+    <script src="script.js"></script>
+
+    <script>
+        const results = document.getElementById('results');
+        const logs = [];
+
+        function log(msg, type = 'info') {
+            console.log(msg);
+            const div = document.createElement('div');
+            div.className = 'log ' + type;
+            div.textContent = msg;
+            document.body.appendChild(div);
+        }
+
+        function assert(desc, condition) {
+            if (condition) {
+                log(`[PASS] ${desc}`, 'pass');
+            } else {
+                log(`[FAIL] ${desc}`, 'fail');
+            }
+        }
+
+        async function runTests() {
+            log("Starting Tests...");
+
+            // TEST 1: Check if processSVG exists
+            assert("processSVG function exists", typeof processSVG === 'function');
+
+            // TEST 2: Teddy Bear SVG (No paths, only groups/other shapes?)
+            // Actually the teddy bear HAS paths.
+            // We will inject a mock SVG string.
+            const teddySVG = `
+            <svg width="100" height="100" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+                <rect x="10" y="10" width="30" height="30" />
+                <circle cx="50" cy="50" r="10" />
+                <path d="M 10 80 L 50 80" />
+            </svg>
+            `;
+
+            try {
+                log("Processing Mock Teddy (Rect/Circle/Path)...");
+                // Reset state
+                state.path = [];
+                animationQueue = [];
+
+                processSVG(teddySVG);
+
+                assert("Animation Queue populated for Teddy", animationQueue.length > 0);
+                assert("Queue contains Pen Down movements", animationQueue.some(p => p.penDown));
+
+                // Check if we got multiple validation points
+                // Rect + Circle + Path should all be processed
+                // Total length > some amount
+                log(`Queue Length: ${animationQueue.length}`);
+
+            } catch (e) {
+                log(`[FAIL] Mock Teddy Error: ${e.message}`, 'fail');
+                console.error(e);
+            }
+
+            // TEST 3: Performance (Scooter Simulation)
+            // Create a complex path
+            let complexPath = "M 0 0 ";
+            for (let i = 0; i < 1000; i++) complexPath += `L ${i / 10} ${Math.sin(i / 10)} `;
+
+            const scooterSVG = `
+            <svg width="100" height="100" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+                <path d="${complexPath}" />
+            </svg>
+            `;
+
+            try {
+                log("Processing Mock Scooter (Complex Path)...");
+                const start = performance.now();
+                processSVG(scooterSVG);
+                const end = performance.now();
+
+                log(`Processing Time: ${(end - start).toFixed(2)}ms`);
+                assert("Performance is acceptable (< 100ms)", (end - start) < 100);
+                assert("Queue populated for Scooter", animationQueue.length > 0);
+
+            } catch (e) {
+                log(`[FAIL] Mock Scooter Error: ${e.message}`, 'fail');
+            }
+
+            log("Tests Complete.");
+            results.textContent = "Tests Finished (Check logs below)";
+        }
+
+        // Wait a bit for scripts to load
+        setTimeout(runTests, 1000);
+    </script>
+</body>
+
+</html>

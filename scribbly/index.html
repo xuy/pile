@@ -59,17 +59,27 @@
                         <p class="hint">Upload an SVG file to draw.</p>
                         <input type="file" id="file-svg" accept=".svg" style="max-width: 100%; margin-bottom: 10px;">
                         <button id="btn-draw-svg" disabled>Draw SVG</button>
+
+                        <!-- Playback Controls -->
+                        <div id="playback-controls" style="margin-top: 1rem; display: none;">
+                            <div style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem;">
+                                <button id="btn-pause" style="background-color: #f59e0b;">Pause</button>
+                                <button id="btn-stop" style="background-color: #ef4444;">Stop</button>
+                            </div>
+                            <label style="margin-bottom: 0.2rem; font-size: 0.8rem;">Progress</label>
+                            <progress id="progress-bar" value="0" max="100" style="width: 100%;"></progress>
+                        </div>
                     </div>
-                </div>
 
-                <div class="control-group" style="margin-top: 2rem; border-top: 1px solid #e5e7eb; padding-top: 1rem;">
-                    <button id="btn-clear" style="background-color: #ef4444;">Clear Canvas</button>
-                </div>
+                    <div class="control-group"
+                        style="margin-top: 2rem; border-top: 1px solid #e5e7eb; padding-top: 1rem;">
+                        <button id="btn-clear" style="background-color: #ef4444;">Clear Canvas</button>
+                    </div>
 
-                <div class="status-panel">
-                    <h3>Status</h3>
-                    <p>Pen Position: <span id="pos-display">(0, 0)</span></p>
-                </div>
+                    <div class="status-panel">
+                        <h3>Status</h3>
+                        <p>Pen Position: <span id="pos-display">(0, 0)</span></p>
+                    </div>
             </aside>
         </main>
     </div>
