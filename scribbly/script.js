@@ -268,6 +268,16 @@ function setupEventListeners() {
         animationQueue = [];
     });
 
+    const btnPen = document.getElementById('btn-pen-toggle');
+    if (btnPen) {
+        btnPen.addEventListener('click', () => {
+            state.penDown = !state.penDown;
+            btnPen.textContent = state.penDown ? "Pen Up" : "Pen Down";
+            // If we are just toggling, we might want to ensure the current position is pushed if down?
+            // The updateKinematics loop handles manual drawing if penDown is true.
+        });
+    }
+
     ui.btnClear.addEventListener('click', () => {
         state.path = [];
         state.penDown = false;
@@ -281,15 +291,40 @@ function setupEventListeners() {
 
     document.getElementById('btn-rect')?.addEventListener('click', () => {
         const w = 60, h = 40, cx = 0, cy = 200;
-        const pts = [
+        const corners = [
             { x: cx - w / 2, y: cy - h / 2 },
             { x: cx + w / 2, y: cy - h / 2 },
             { x: cx + w / 2, y: cy + h / 2 },
             { x: cx - w / 2, y: cy + h / 2 },
             { x: cx - w / 2, y: cy - h / 2 }
         ];
+
+        const pts = [];
+        for (let i = 0; i < corners.length - 1; i++) {
+            pts.push(...interpolateLine(corners[i], corners[i + 1]));
+        }
         startShapeBuffer(pts);
     });
+
+    document.getElementById('btn-line')?.addEventListener('click', () => {
+        const p0 = { x: -50, y: 200 };
+        const p1 = { x: 50, y: 200 };
+        startShapeBuffer(interpolateLine(p0, p1));
+    });
+}
+
+function interpolateLine(p0, p1, step = 2) {
+    const pts = [];
+    const dist = Math.hypot(p1.x - p0.x, p1.y - p0.y);
+    const steps = Math.ceil(dist / step);
+    for (let i = 0; i <= steps; i++) {
+        const t = i / steps;
+        pts.push({
+            x: p0.x + (p1.x - p0.x) * t,
+            y: p0.y + (p1.y - p0.y) * t
+        });
+    }
+    return pts;
 }
 
 init();
