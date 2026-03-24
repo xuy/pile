@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      width: 300px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #1a1a2e;
+      color: #eee;
+      padding: 16px;
+    }
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+    }
+    .header h1 {
+      font-size: 18px;
+      font-weight: 700;
+      color: #e63946;
+    }
+    .toggle {
+      position: relative;
+      width: 44px;
+      height: 24px;
+    }
+    .toggle input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+    .slider {
+      position: absolute;
+      cursor: pointer;
+      inset: 0;
+      background: #444;
+      border-radius: 24px;
+      transition: 0.3s;
+    }
+    .slider::before {
+      content: '';
+      position: absolute;
+      height: 18px;
+      width: 18px;
+      left: 3px;
+      bottom: 3px;
+      background: #fff;
+      border-radius: 50%;
+      transition: 0.3s;
+    }
+    .toggle input:checked + .slider {
+      background: #e63946;
+    }
+    .toggle input:checked + .slider::before {
+      transform: translateX(20px);
+    }
+    .stats {
+      background: #16213e;
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 12px;
+    }
+    .stat-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 4px 0;
+    }
+    .stat-label {
+      font-size: 13px;
+      color: #aaa;
+    }
+    .stat-value {
+      font-size: 16px;
+      font-weight: 600;
+      color: #e63946;
+    }
+    .divider {
+      border-top: 1px solid #2a2a4a;
+      margin: 8px 0;
+    }
+    .status {
+      text-align: center;
+      padding: 8px;
+      font-size: 12px;
+      color: #888;
+    }
+    .status.active {
+      color: #4ade80;
+    }
+    .status.disabled {
+      color: #f87171;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>PileBlock</h1>
+    <label class="toggle">
+      <input type="checkbox" id="enableToggle" checked>
+      <span class="slider"></span>
+    </label>
+  </div>
+
+  <div class="stats">
+    <div class="stat-row">
+      <span class="stat-label">Blocked on this page</span>
+      <span class="stat-value" id="pageCount">0</span>
+    </div>
+    <div class="divider"></div>
+    <div class="stat-row">
+      <span class="stat-label">Total blocked</span>
+      <span class="stat-value" id="totalCount">0</span>
+    </div>
+  </div>
+
+  <div class="status active" id="statusText">Protection active</div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

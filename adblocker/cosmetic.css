@@ -1,0 +1,98 @@
+/* PileBlock - Cosmetic Filters
+   Common ad-related selectors that hide visual ad elements.
+   These complement the network-level blocking from declarativeNetRequest. */
+
+/* Google Ads */
+.adsbygoogle,
+ins.adsbygoogle,
+#google_ads_iframe_0,
+[id^="google_ads_"],
+[id^="div-gpt-ad"],
+[data-google-query-id],
+.google-auto-placed {
+  display: none !important;
+  height: 0 !important;
+  min-height: 0 !important;
+  max-height: 0 !important;
+  overflow: hidden !important;
+}
+
+/* Generic ad containers */
+[class*="ad-wrapper"],
+[class*="ad-container"],
+[class*="ad-banner"],
+[class*="ad-slot"],
+[class*="ad-unit"],
+[class*="advert-"],
+[class*="advertisement"],
+[id*="ad-wrapper"],
+[id*="ad-container"],
+[id*="ad-banner"],
+[id*="ad-slot"],
+[id*="advertisement"],
+div[class*="sponsored"],
+div[data-ad],
+div[data-ad-slot],
+div[data-adunit],
+aside[class*="ad-"],
+section[class*="ad-"] {
+  display: none !important;
+}
+
+/* Common ad network elements */
+[id^="taboola-"],
+[class*="taboola"],
+[id^="outbrain"],
+[class*="outbrain"],
+[data-widget-type="taboola"],
+.OUTBRAIN,
+#credential_picker_container,
+[class*="zergnet"],
+[id^="zergnet"],
+[class*="revcontent"],
+[id*="revcontent"] {
+  display: none !important;
+}
+
+/* Popups and overlays */
+div[class*="popup-ad"],
+div[class*="modal-ad"],
+div[class*="interstitial"],
+div[class*="overlay-ad"] {
+  display: none !important;
+}
+
+/* Social media feed ads */
+[data-testid="placementTracking"],
+article[data-testid*="tweet"][class*="promoted"],
+div[data-pagelet*="FeedUnit"] div[aria-label="Sponsored"] {
+  display: none !important;
+}
+
+/* Video pre-roll placeholders */
+.video-ads,
+.ytp-ad-module,
+.ytp-ad-overlay-container,
+.ytp-ad-text-overlay,
+.ad-interrupting,
+.ad-showing .video-ads {
+  display: none !important;
+}
+
+/* Cookie/consent popups (optional quality of life) */
+/* These are hidden after a delay by cosmetic.js to avoid breaking sites */
+
+/* Tracking pixels and beacons */
+img[width="1"][height="1"],
+img[src*="pixel"],
+img[src*="beacon"],
+img[src*="tracking"] {
+  display: none !important;
+}
+
+/* Newsletter/subscription popups that cover content */
+[class*="newsletter-popup"],
+[class*="subscribe-modal"],
+[id*="newsletter-popup"] {
+  /* Not hidden by default - handled by cosmetic.js with delay */
+}
